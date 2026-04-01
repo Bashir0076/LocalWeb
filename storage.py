@@ -6,6 +6,7 @@ import datetime
 import logging
 import os
 import time
+import json
 from typing import TYPE_CHECKING
 
 import httpx
@@ -26,7 +27,7 @@ async def save_response(
         async_http_client: httpx.AsyncClient,
         save_directory: str,
         state: 'state.CrawlerState'
-) -> None:
+    ) -> None:
     """Save an HTTP response to the local filesystem, organizing files by domain and path.
 
     This function saves the response content to a directory structure that mirrors
@@ -69,7 +70,7 @@ async def save_response(
     else:
         # Text content (HTML/JS/CSS)
         content = response.content.decode(encoding="utf-8", errors="ignore")
-        
+
         # Convert links to local paths if it's HTML
         if "text/html" in content_type or path.endswith((".html", ".htm")):
             content = html_processor.make_links_local(response, None, None)
@@ -91,8 +92,8 @@ async def save_response(
     # Fetch JS and CSS resources if it's HTML
     if "text/html" in content_type or path.endswith((".html", ".htm")):
         await html_processor.fetch_js_css_resources(
-            response, 
-            async_http_client, 
+            response,
+            async_http_client,
             dict(state.cookies),
             state
         )
@@ -100,23 +101,26 @@ async def save_response(
 
 def generate_report(title_suffix: str = ""):
     """Generate a scraping report with statistics.
-    
+
     Args:
         title_suffix: Optional suffix to add to the report title.
     """
     logger.debug("Generating report")
-    
+
     import state as state_module
     st = state_module.state
-    
+
     cfg = config_loader.config
-    
+
+    with open(cfg.config_path) as cfg_file:
+        cfg_json = cfg_file.read()
+
     review_message = (
         "____________________________________________________\n"
         f"# Scraping Report {datetime.datetime.now(datetime.UTC).isoformat()}\n"
         f"{title_suffix}\n"
         "____________________________________________________\n"
-        "# Requests report:\n"
+        "## Requests report:\n"
         f"- total fetched urls: {len(st.fetched_urls)}\n"
         f"- total requests: {st.total_requests}\n"
         f"- successful requests: {len(st.successful_requests)}\n"
@@ -126,25 +130,27 @@ def generate_report(title_suffix: str = ""):
         f"- other-request-errors: {len(st.other_error_requests)}\n"
         f"- cookies: {st.cookies}\n"
         "____________________________________________________\n"
-        "# Storage Report:\n"
+        "## Storage Report:\n"
         f"- total saved file: {st.total_downloads}\n"
         f"- media saved: {st.media_downloaded}\n"
         f"- html saved: {st.html_downloaded}\n"
         f"- css saved: {st.css_downloaded}\n"
         f"- javascript saved: {st.javascript_downloaded}\n"
         "____________________________________________________\n"
-        f"## save directory: {cfg.save_directory}\n"
-        f"## total runtime: {int(time.time() - st.start_time)}\n"
+        f"### save directory: {cfg.save_directory}\n"
+        f"### total runtime: {int(time.time() - st.start_time)}\n"
         "____________________________________________________\n"
+        f"## config.json:\n"
+        f"{cfg_json}\n"
     )
 
     # Create ISO-safe filename
     timestamp = datetime.datetime.now(datetime.UTC).isoformat().replace(':', '-')
     title_suffix_clean = title_suffix.replace(' ', '_').replace(':', '-')
     report_filename = f"scraping-report_{timestamp}{title_suffix_clean}.md"
-    
+
     report_file_path = os.path.join(cfg.report_files_directory, report_filename)
-    
+
     with open(report_file_path, "w") as f:
         f.write(review_message)
 

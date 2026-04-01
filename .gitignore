@@ -4,3 +4,4 @@ venv/
 example-directory/
 *.pyc
 *.log
+scraping-report*
