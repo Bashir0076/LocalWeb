@@ -1,5 +1,5 @@
 """
-Main crawler orchestration module.
+LocalWeb main crawler orchestration module.
 Handles the crawling workflow and URL queue management.
 """
 import asyncio

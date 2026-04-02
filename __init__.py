@@ -1,6 +1,6 @@
 """
-docs-crawler-downloader package.
-A web crawler for downloading and saving online documentation for offline viewing.
+localweb package.
+A web crawler for downloading and saving websites for offline viewing.
 """
 import logging
 import sys

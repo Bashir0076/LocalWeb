@@ -1,5 +1,5 @@
 """
-Storage functionality for the documentation crawler.
+LocalWeb storage functionality.
 Handles saving responses to disk and generating reports.
 """
 import datetime

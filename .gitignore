@@ -1,7 +1,29 @@
+# IDE
 .vscode/
+.idea/
+
+# Python
 __pycache__/
-venv/
-example-directory/
 *.pyc
+*.pyo
+*.pyd
+.Python
+venv/
+.venv/
+env/
+*.egg-info/
+dist/
+build/
+eggs/
+
+# Output directories
+example-directory/
+output/
+
+# Logs
 *.log
 scraping-report*
+
+# OS
+.DS_Store
+Thumbs.db

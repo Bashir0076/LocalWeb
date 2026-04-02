@@ -1,5 +1,5 @@
 """
-Configuration loader for the crawler.
+LocalWeb configuration loader.
 Loads user-configurable settings from config.json.
 """
 import json

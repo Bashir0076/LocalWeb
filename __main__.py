@@ -1,5 +1,5 @@
 """
-CLI entry point for the documentation crawler.
+CLI entry point for the LocalWeb crawler.
 """
 import argparse
 import asyncio
@@ -30,7 +30,7 @@ def main() -> int:
         int: Exit code (0 for success, non-zero for errors)
     """
     parser = argparse.ArgumentParser(
-        description="Online Documentation Crawler-Downloader",
+        description="LocalWeb - Website Downloader for Offline Viewing",
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""
 Examples:

@@ -1,5 +1,5 @@
 """
-HTTP client functionality for the documentation crawler.
+LocalWeb HTTP client functionality.
 Handles fetching pages with retry logic.
 """
 import asyncio

@@ -1,5 +1,5 @@
 """
-HTML processing functionality for the documentation crawler.
+LocalWeb HTML processing functionality.
 Handles link extraction, scope checking, and local link conversion.
 """
 import logging

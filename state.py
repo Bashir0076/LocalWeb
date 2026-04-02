@@ -1,5 +1,5 @@
 """
-Runtime state management for the crawler.
+LocalWeb runtime state management.
 This module handles all runtime statistics and state that are updated during crawling.
 These values are managed internally and not meant to be modified by users.
 """

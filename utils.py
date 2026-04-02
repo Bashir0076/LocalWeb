@@ -1,5 +1,5 @@
 """
-Utility classes and functions for the documentation crawler.
+LocalWeb utility classes and functions.
 """
 import os
 from dataclasses import dataclass
