@@ -90,6 +90,10 @@ class Config:
     def start_page_url(self) -> str:
         return self._data.get("start_page_url", "")
 
+    @property
+    def max_concurrency(self) -> int:
+        return self._data.get("max_concurrency", 10)
+
     # Scope settings - returns processed Scope objects
     @property
     def allowed_html_scopes(self) -> list[Scope] | None:

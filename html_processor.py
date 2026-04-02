@@ -88,7 +88,7 @@ def make_links_local(
         response: httpx.Response,
         queued_urls: 'Queue',
         media_queued_urls: 'Queue'
-) -> str:
+    ) -> str:
     """Convert links in HTML to local relative paths for offline viewing.
 
     Processes HTML to:
@@ -110,7 +110,7 @@ def make_links_local(
         Modified HTML string with converted links.
     """
     cfg = config_loader.config
-    soup = BeautifulSoup(response.content, "lxml")
+    soup = BeautifulSoup(response.content.decode(), "lxml")
 
     # Process <a> tags
     for anchor in soup.find_all("a", href=True):
@@ -267,7 +267,7 @@ async def fetch_js_css_resources(
         state,
         queued_urls,
         media_queued_urls,
-) -> list:
+    ) -> list:
     """Fetch and save JavaScript and CSS resources linked from an HTML page.
 
     Extracts resource URLs from <script>, <link>, and other elements in the
@@ -334,8 +334,8 @@ async def fetch_js_css_resources(
                 resource_response = await get_page(
                     parsed_url, 
                     async_http_client, 
+                    state=state,
                     cookies=cookies,
-                    state=state
                 )
                 
                 if resource_response is None:

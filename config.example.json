@@ -16,5 +16,6 @@
     "allowed_iframe_scopes": null,
     "save_directory": "./output/",
     "report_files_directory": "./",
-    "start_page_url": "https://example.com/"
-}e
+    "start_page_url": "https://example.com/",
+    "max_concurrency": 10
+}

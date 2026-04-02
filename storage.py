@@ -2,6 +2,7 @@
 LocalWeb storage functionality.
 Handles saving responses to disk and generating reports.
 """
+import asyncio
 import datetime
 import logging
 import os
@@ -22,11 +23,54 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 
+def _is_media(response: httpx.Response):
+    media_extensions = {
+        '.png', '.jpg', '.jpeg', '.gif', '.webp', '.svg', '.ico', '.mp4', 
+        '.webm', '.ogg', '.mp3', '.wav', '.pdf','.zip', '.tar', '.gz', '.rar',
+        '.exe', '.dmg', '.pkg', '.deb', '.rpm'
+        }
+    content_type = response.headers.get("content-type").strip().lower()
+
+    if ("image" in content_type or "video" in content_type 
+            or path.endswith(media_extensions)
+            ):
+        return True
+
+    return False
+
+
+def _is_html(response: httpx.Response):
+    if "text/html" in content_type or path.endswith((".html", ".htm")):
+        return True
+
+    return False
+
+
+def _is_css(response: httpx.Response):
+    if "css" in content_type or path.endswith(".css"):
+        return True
+
+    return False
+
+
+def _is_javascript(response: httpx.Response):
+    if "javascript" in content_type or path.endswith(".js"):
+        return True
+
+    return False
+
+
+def _write_binary_file(path: str, content: bytes) -> None:
+    """Write binary content to a file (blocking I/O, run in executor)."""
+    with open(path, "wb") as f:
+        f.write(content)
+    
+
 async def save_response(
         response: httpx.Response,
         async_http_client: httpx.AsyncClient,
         save_directory: str,
-        state: 'state.CrawlerState',
+        state_obj: 'state.CrawlerState',
         queued_urls: utils.Queue,
         media_queued_urls: utils.Queue
     ) -> None:
@@ -39,7 +83,9 @@ async def save_response(
         response: The httpx.Response object containing the page content to save.
         async_http_client: The async HTTP client to use.
         save_directory: The base directory to save files to.
-        state: CrawlerState instance for tracking downloads.
+        state_obj: CrawlerState instance for tracking downloads.
+        queued_urls: Queue for discovered URLs.
+        media_queued_urls: Queue for discovered media URLs.
 
     Returns:
         None. Files are written to the local filesystem.
@@ -51,53 +97,45 @@ async def save_response(
     if '.' not in path.split('/')[-1]:
         path = path + "/index.html"
 
-    # Create the directory structure
+    # Create the directory structure (async-safe)
     file_path = f"{save_directory.strip(os.sep)}/{host}/{path.strip('/')}".replace("/", os.sep)
     logger.debug(f"Creating directory structure for: {file_path}")
-    os.makedirs(os.path.dirname(file_path), exist_ok=True)
+    await asyncio.to_thread(os.makedirs, os.path.dirname(file_path), exist_ok=True)
 
     logger.info(f"Saving response from {response.url} to {file_path}")
 
-    # Determine content type
-    content_type = response.headers.get('content-type', '').lower()
-    logger.debug(f"Detected content type: {content_type}, for response {response.url}")
+    content = response.content
 
-    # Save based on content type
-    if "image" in content_type or "application" in content_type:
-        # Binary content (images/videos)
-        state.increment_media()
-        logger.debug("Using binary write mode")
-        with open(file_path, "wb") as file:
-            file.write(response.content)
+    
+    # Convert links to local paths if it's HTML
+    if _is_html(response):
+        content = html_processor.make_links_local(response, queued_urls, media_queued_urls)
+        await state_obj.increment_html()
+        logger.debug(f"Converted links to local paths for {response.url}")
+
+    elif _is_javascript(response):
+        await state_obj.increment_javascript()
+
+    elif _is_css(response):
+        await state_obj.increment_css()
+
+    elif _is_media(response):
+        await state_obj.increment_media()
+
     else:
-        # Text content (HTML/JS/CSS)
-        content = response.content.decode(encoding="utf-8", errors="ignore")
+        await state_obj.increment_others()
 
-        # Convert links to local paths if it's HTML
-        if "text/html" in content_type or path.endswith((".html", ".htm")):
-            content = html_processor.make_links_local(response, queued_urls, media_queued_urls)
-            state.increment_html()
-            logger.debug(f"Converted links to local paths for {response.url}")
-        else:
-            if "javascript" in content_type or path.endswith(".js"):
-                state.increment_javascript()
-            elif "css" in content_type or path.endswith(".css"):
-                state.increment_css()
-            else:
-                state.increment_others()
-
-        with open(file_path, "w", encoding='utf-8') as file:
-            file.write(content)
+    await asyncio.to_thread(_write_binary_file, file_path, response.content)
 
     logger.info(f"Successfully saved content to {file_path}")
 
     # Fetch JS and CSS resources if it's HTML
-    if "text/html" in content_type or path.endswith((".html", ".htm")):
+    if _is_html(response):
         await html_processor.fetch_js_css_resources(
             response,
             async_http_client,
-            dict(state.cookies),
-            state,
+            dict(state_obj.cookies),
+            state_obj,
             queued_urls,
             media_queued_urls
         )

@@ -56,6 +56,7 @@ python __main__.py https://example.com
 | `--verbose` | `-v` | Increase verbosity (-v for INFO, -vv for DEBUG) | 0 (WARNING) |
 | `--delay` | - | Delay between retry attempts in seconds | 3 |
 | `--max-tries` | - | Maximum retry attempts per URL | 30 |
+| `--concurrency` | `-c` | Maximum concurrent requests | 10 (or config.json) |
 
 ### Usage Examples
 
@@ -157,7 +158,7 @@ async def main():
 asyncio.run(main())
 ```
 
-The `crawl()` function returns a dictionary with:
+The `crawl()` function accepts an additional `max_concurrency` parameter and returns a dictionary with:
 ```python
 {
     "total_urls": 100,

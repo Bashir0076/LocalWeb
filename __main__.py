@@ -75,14 +75,18 @@ Examples:
         default=30,
         help="Maximum retry attempts per URL (default: 30)"
     )
+    parser.add_argument(
+        "-c", "--concurrency",
+        type=int,
+        default=None,
+        help="Maximum concurrent requests (overrides config.json, default: 10)"
+    )
 
     args = parser.parse_args()
 
     # Set logging level
-    if args.verbose >= 2:
+    if args.verbose >= 1:
         logging.getLogger().setLevel(logging.DEBUG)
-    elif args.verbose >= 1:
-        logging.getLogger().setLevel(logging.INFO)
     
     # If URL provided, use it; otherwise log info about using config
     if args.url:
@@ -97,7 +101,8 @@ Examples:
             depth=args.depth,
             save_dir=args.output,
             delay=args.delay,
-            max_tries=args.max_tries
+            max_tries=args.max_tries,
+            max_concurrency=args.concurrency
         ))
         
         logger.info("Crawl completed successfully!")

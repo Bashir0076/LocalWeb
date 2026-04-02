@@ -2,6 +2,7 @@
 LocalWeb utility classes and functions.
 """
 import os
+from collections import deque
 from dataclasses import dataclass
 
 
@@ -19,46 +20,69 @@ class Scope:
 
 
 class Queue:
-    """Simple classic FIFO queue with optional duplicate prevention."""
+    """FIFO queue with optional duplicate prevention.
+    
+    When no_repeat=True, items that have ever been added to the queue
+    cannot be added again, even after being dequeued. This is essential
+    for crawlers to avoid visiting the same URL twice.
+    
+    Uses a deque internally for O(1) popleft instead of list.pop(0) which is O(n).
+    Uses a set for O(1) membership checks instead of list.__contains__ which is O(n).
+    """
     
     def __init__(self, *items, no_repeat: bool = False) -> None:
-        self._list = list(items)
         self.no_repeat = no_repeat
-        if self.no_repeat:
-            # Remove duplicates while preserving order
-            seen = set()
-            unique_items = []
-            for item in self._list:
-                if item not in seen:
-                    seen.add(item)
-                    unique_items.append(item)
-            self._list = unique_items
+        self._seen: set = set()
+        self._deque: deque = deque()
 
-    def __len__(self):
-        return len(self._list)
+        for item in items:
+            if self.no_repeat:
+                if item not in self._seen:
+                    self._seen.add(item)
+                    self._deque.append(item)
+            else:
+                self._deque.append(item)
 
-    def put(self, item):
-        """Add an item to the end of the queue."""
-        if self.no_repeat and item in self._list:
+    def __len__(self) -> int:
+        return len(self._deque)
+
+    def put(self, item) -> None:
+        """Add an item to the end of the queue.
+        
+        If no_repeat=True, silently skips items that have ever been seen.
+        """
+        if self.no_repeat and item in self._seen:
             return
-        self._list.append(item)
+        self._deque.append(item)
+        self._seen.add(item)
 
     def get(self):
-        """Returns the first item in the queue, or raises IndexError if empty."""
-        if not self._list:
+        """Remove and return the first item in the queue.
+        
+        Note: With no_repeat=True, dequeued items remain in the _seen set,
+        preventing them from being re-added. This is by design for crawler
+        use cases where each URL should only be visited once.
+        
+        Raises:
+            IndexError: If the queue is empty.
+        """
+        if not self._deque:
             raise IndexError("Queue is empty")
-        return self._list.pop(0)
+        return self._deque.popleft()
 
-    def get_size(self):
-        return len(self._list)
+    def get_size(self) -> int:
+        """Return the number of items currently in the queue."""
+        return len(self._deque)
 
-    def has(self, item):
-        """Returns True if the item is in the queue."""
-        return item in self._list
+    def has(self, item) -> bool:
+        """Return True if the item has ever been added (when no_repeat=True)
+        or is currently in the queue."""
+        return item in self._seen
 
-    def clear(self):
-        """Clear all items from the queue."""
-        self._list.clear()
+    def clear(self) -> None:
+        """Clear all items from the queue and the seen set."""
+        self._deque.clear()
+        self._seen.clear()
 
 
 def get_relative_path(from_path: str, to_path: str) -> str:
