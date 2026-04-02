@@ -3,6 +3,7 @@ Runtime state management for the crawler.
 This module handles all runtime statistics and state that are updated during crawling.
 These values are managed internally and not meant to be modified by users.
 """
+import time
 import threading
 from dataclasses import dataclass, field
 from typing import Any
@@ -122,4 +123,5 @@ class CrawlerState:
 
 # Global state instance
 state = CrawlerState()
+state.start_time = time.time()
 

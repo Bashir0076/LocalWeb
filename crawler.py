@@ -155,7 +155,9 @@ async def crawl(
                     media_response,
                     async_http_client,
                     output_dir,
-                    st
+                    st,
+                    queued_urls,
+                    media_queued_urls
                 )
                 logger.debug(f"Successfully fetched media: {media_url}")
 
@@ -171,5 +173,5 @@ async def crawl(
         "media_downloaded": st.media_downloaded,
         "javascript_downloaded": st.javascript_downloaded,
         "css_downloaded": st.css_downloaded,
-        "runtime": int(time.time() - state_module.start_time)
+        "runtime": int(time.time() - state_module.state.start_time)
     }

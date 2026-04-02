@@ -264,7 +264,9 @@ async def fetch_js_css_resources(
         response: httpx.Response,
         async_http_client: httpx.AsyncClient,
         cookies: dict,
-        state
+        state,
+        queued_urls,
+        media_queued_urls,
 ) -> list:
     """Fetch and save JavaScript and CSS resources linked from an HTML page.
 
@@ -342,7 +344,14 @@ async def fetch_js_css_resources(
                     
                 fetched_resources.append(parsed_url)
                 # Save the resource
-                await save_response(resource_response, async_http_client, cfg.save_directory, state)
+                await save_response(
+                    resource_response, 
+                    async_http_client, 
+                    cfg.save_directory, 
+                    state,
+                    queued_urls,
+                    media_queued_urls,
+                    )
                 logger.info(f"Fetched resource: {parsed_url}")
 
             except Exception as e:

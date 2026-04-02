@@ -26,7 +26,9 @@ async def save_response(
         response: httpx.Response,
         async_http_client: httpx.AsyncClient,
         save_directory: str,
-        state: 'state.CrawlerState'
+        state: 'state.CrawlerState',
+        queued_urls: utils.Queue,
+        media_queued_urls: utils.Queue
     ) -> None:
     """Save an HTTP response to the local filesystem, organizing files by domain and path.
 
@@ -73,7 +75,7 @@ async def save_response(
 
         # Convert links to local paths if it's HTML
         if "text/html" in content_type or path.endswith((".html", ".htm")):
-            content = html_processor.make_links_local(response, None, None)
+            content = html_processor.make_links_local(response, queued_urls, media_queued_urls)
             state.increment_html()
             logger.debug(f"Converted links to local paths for {response.url}")
         else:
@@ -95,7 +97,9 @@ async def save_response(
             response,
             async_http_client,
             dict(state.cookies),
-            state
+            state,
+            queued_urls,
+            media_queued_urls
         )
 
 
