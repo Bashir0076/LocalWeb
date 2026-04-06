@@ -15,11 +15,10 @@ from state import CrawlerState
 import storage
 from os import path
 
-#TODO: create a simple GUI inerface
 #TODO: mention in the README that when you encounter wierd Errors or pages are not getting saved, consider retruning config.json to its defaults from config.default.json.
 #TODO: mention in the README that you should never touch config.default.json unless you know what you're doing.
 #TODO: mention in the README that it is best to use the config.json instead of the regular cli interface for more options, and the cli interface uses the entered url as the html scope.
-#TODO: make a GUI inerface with these tabs:
+#TODO: make a simple tkinter GUI inerface with these tabs:
 #   - "Log" tab
 #   - "New Crawler" tab
 #   - "Current Crawler Progress" tab

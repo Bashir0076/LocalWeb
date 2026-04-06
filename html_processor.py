@@ -333,10 +333,11 @@ async def fetch_js_css_resources(
         soup = BeautifulSoup(response.content, "lxml")
 
         # Find all script tags with src attribute
-        script_elements = soup.find_all("script", src=True)
-        if cfg.remove_javascript or not cfg.allow_javascript:
+        if cfg.remove_javascript or (not cfg.allow_javascript):
+            logger.debug("JavaScript is not allowed or should be removed, skipping script fetching.")
             script_urls = []
         else:
+            script_elements = soup.find_all("script", src=True)
             script_urls = [e.get("src") for e in script_elements if e.get("src")]
 
         # Find all link tags for CSS (stylesheet)
@@ -346,6 +347,7 @@ async def fetch_js_css_resources(
         # Also check for other link types
         other_link_elements = soup.find_all("link", href=True)
         if not cfg.allow_other_link_elements:
+            logger.debug("Other link elements are not allowed, skipping.")
             other_urls = []
         else:
             other_urls = [
