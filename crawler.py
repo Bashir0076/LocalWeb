@@ -9,266 +9,235 @@ from typing import Optional
 
 import httpx
 
-import config_loader
+from config_loader import CrawlerConfig
 import http_client
 import html_processor
-import state as state_module
+from state import CrawlerState
 import storage
 import utils
 
 
 logger = logging.getLogger(__name__)
 
-# Default concurrency limit
-DEFAULT_MAX_CONCURRENCY = 10
+
+#TODO: document all functions in this file and emohasise that crawler() will 
+#      reset the state given to it so every state given to crawl() should be
+#      seperate from other crawl() calls.
+
+#TODO: use asyncio queue class instead of the current utils.Queue
 
 
 async def _process_url(
     url_str: str,
     async_http_client: httpx.AsyncClient,
-    cfg,
-    st,
-    output_dir: str,
+    cfg: CrawlerConfig,
+    state: CrawlerState,
     queued_urls: utils.Queue,
     media_queued_urls: utils.Queue,
-    delay: int,
-    max_tries: int,
     semaphore: asyncio.Semaphore,
-) -> None:
-    """Process a single URL: fetch, save, and extract links."""
+    ) -> None:
+    """Process a single URL (designed for html responses): fetch, save, and extract links."""
     async with semaphore:
         current_url = httpx.URL(url_str)
         
         # Check if URL is already fetched
-        if st.fetched_urls.get(str(current_url)):
+        if str(current_url) in state.fetched_urls:
             logger.debug(f"URL already fetched, skipping: {current_url}")
             return
 
         # Check if URL is in scope
-        if not html_processor.is_in_scope(current_url, cfg.allowed_html_scopes):
+        if not html_processor.is_in_scope(
+                current_url, cfg.allowed_html_scopes,
+                cfg.depth, cfg.depth is not None
+                ):
             logger.debug(f"URL outside scope, skipping: {current_url}")
             return
+        elif html_processor.is_in_scope(
+                current_url, cfg.blocked_html_scopes,
+                cfg.depth, cfg.depth is not None
+            ):
+            logger.debug(f"URL scope blocked, skipping: {current_url}")
+            return
+
 
         # Fetch response
         try:
             response = await http_client.get_page(
-                current_url,
-                async_http_client,
-                state=st,
-                cookies=dict(st.cookies),
-                wait_time=delay,
-                max_tries=max_tries,
+                url= current_url,
+                httpx_async_client= async_http_client,
+                state= state,
+                cookies= dict(state.cookies),
+                wait_time= cfg.delay,
+                max_tries= cfg.max_tries,
             )
 
             if response is None:
                 return
 
-            # Save the response (this also handles JS/CSS fetching for HTML pages)
+            # Save the response (this also handles JS/CSS fetching for HTML 
+            #   pages, and also extracts links and puts them in the queue and
+            #   process them to be relative).
             await storage.save_response(
-                response,
-                async_http_client,
-                output_dir,
-                st,
-                queued_urls,
-                media_queued_urls
+                response= response,
+                async_http_client= async_http_client,
+                cfg= cfg,
+                state= state,
+                queued_urls= queued_urls,
+                media_queued_urls= media_queued_urls
             )
 
             logger.info(f"Successfully saved and processed: {current_url}")
 
         except Exception as e:
             logger.error(f"Error processing {current_url}: {e}")
+            logger.error(f"{e} Traceback: " + ''.join(
+                traceback.format_exception(type(e), e, e.__traceback__))
+            )
+
             return
 
 
 async def _process_media_url(
     media_url_str: str,
     async_http_client: httpx.AsyncClient,
-    cfg,
-    st,
-    output_dir: str,
+    cfg: CrawlerConfig,
+    state: CrawlerState,
     queued_urls: utils.Queue,
     media_queued_urls: utils.Queue,
-    delay: int,
-    max_tries: int,
     semaphore: asyncio.Semaphore,
-) -> None:
+    ) -> None:
     """Process a single media URL: fetch and save."""
     async with semaphore:
         media_url = httpx.URL(media_url_str)
-        
-        if st.fetched_urls.get(str(media_url)):
+
+        if str(media_url) in state.fetched_urls:
             logger.debug(f"Media {media_url} already fetched")
             return
             
         try:
             media_response = await http_client.get_page(
-                media_url,
-                async_http_client,
-                state=st,
-                cookies=dict(st.cookies),
-                wait_time=delay,
-                max_tries=max_tries,
+                url= media_url,
+                httpx_async_client= async_http_client,
+                state= state,
+                cookies= dict(state.cookies),
+                wait_time= cfg.delay,
+                max_tries= cfg.max_tries,
             )
             
             if media_response:
                 await storage.save_response(
-                    media_response,
-                    async_http_client,
-                    output_dir,
-                    st,
-                    queued_urls,
-                    media_queued_urls
+                    response= media_response,
+                    async_http_client= async_http_client,
+                    cfg= cfg,
+                    state= state,
+                    queued_urls= queued_urls,
+                    media_queued_urls= media_queued_urls
                 )
                 logger.debug(f"Successfully fetched media: {media_url}")
 
-        except Exception as err:
-            logger.error(f"Error fetching media from {media_url}: {err}")
+        except Exception as e:
+            logger.error(f"Error fetching media from {media_url}: {e}")
+            logger.error(f"{e} Traceback: " + ''.join(
+                traceback.format_exception(type(e), e, e.__traceback__))
+            )
+
 
 
 async def crawl(
-        url: str | None = None,
-        depth: int | None = None,
-        save_dir: str | None = None,
-        delay: int = 3,
-        max_tries: int = 30,
-        max_concurrency: int = DEFAULT_MAX_CONCURRENCY,
-    ) -> dict:
-    """Crawl a website starting from a given URL and save all discovered pages locally.
+        cfg: CrawlerConfig,
+        state: CrawlerState,
+        async_http_client: httpx.AsyncClient,
+        ) -> None:
+    """Crawl a website starting from the URL specified in the config and save all discovered pages locally.
 
-    This is the main function that orchestrates the web crawling process. It uses a queue
-    to manage URLs to visit, starting with the provided URL and progressively adding
+    This is the main function that orchestrates the web crawling process. It uses queues
+    to manage URLs to visit, starting with the start_url from cfg and progressively adding
     newly discovered links that are within the specified scope. URLs are fetched
     concurrently up to the max_concurrency limit.
-
-    Args:
-        url: The starting URL to crawl. If None, uses config's start_page_url.
-        depth: Maximum depth level to crawl. If None, uses config's max_depth.
-        save_dir: Output directory for downloaded files.
-        delay: Delay between retry attempts in seconds.
-        max_tries: Maximum retry attempts per URL.
-        max_concurrency: Maximum number of concurrent HTTP requests.
-
+    
     Returns:
-        dict: Summary of the crawl results.
+        dict: Summary of the crawl results with keys: total_fetched_urls, html_downloaded, 
+        media_downloaded, javascript_downloaded, css_downloaded, runtime.
     """
-    cfg = config_loader.config
-    st = state_module.state
-    
+
     # Initialize state
-    await st.reset()
-    state_module.start_time = time.time()
-    
-    # Override config with function parameters if provided
-    start_url = url or cfg.start_page_url
-    max_depth = depth if depth is not None else (
-        cfg.allowed_html_scopes[0].max_depth if cfg.allowed_html_scopes else 0
-    )
-    output_dir = save_dir or cfg.save_directory
-    
+    await state.reset()
+    state.start_time = time.time()
+
     # Create queues
     queued_urls = utils.Queue(no_repeat=True)
     media_queued_urls = utils.Queue(no_repeat=True)
-    
-    # Set up scopes if depth is specified
-    if depth is not None and cfg.allowed_html_scopes:
-        for scope in cfg.allowed_html_scopes:
-            scope.max_depth = depth
 
-    logger.info(f"Creating HTTP client with concurrency limit: {max_concurrency}")
-    
+    logger.debug(f"Creating semaphore with concurrency limit: {cfg.max_concurrency}")    
     # Use semaphore to limit concurrency
-    semaphore = asyncio.Semaphore(max_concurrency)
+    semaphore = asyncio.Semaphore(cfg.max_concurrency)
 
-    queued_urls.put(start_url)
-    logger.info(f"Starting crawl from: {start_url}")
-    logger.info(f"Initial queue size: {queued_urls.get_size()}")
+    queued_urls.put(str(cfg.start_url))
+    logger.info(f"Starting crawl from: {cfg.start_url}")
 
-    # Use async context manager for proper cleanup
-    async with httpx.AsyncClient() as async_http_client:
-        # First crawling loop (Fetching HTML/CSS/JS)
-        while queued_urls.get_size():
-            try:
+    # First crawling loop (Fetching HTML/CSS/JS)
+    while queued_urls.get_size() > 0:
+        tasks = []
+        for i in range(cfg.max_concurrency):
+            if queued_urls.get_size():
                 url_str = queued_urls.get()
-            except IndexError:
+            else:
                 break
-            
             # Process URL concurrently (semaphore controls concurrency)
-            asyncio.create_task(
+            logger.debug(f"Creating task to process url: {url_str}")
+            tasks.append(asyncio.create_task(
                 _process_url(
-                    url_str,
-                    async_http_client,
-                    cfg,
-                    st,
-                    output_dir,
-                    queued_urls,
-                    media_queued_urls,
-                    delay,
-                    max_tries,
-                    semaphore,
+                    url_str= url_str,
+                    async_http_client= async_http_client,
+                    cfg= cfg,
+                    state= state,
+                    queued_urls= queued_urls,
+                    media_queued_urls= media_queued_urls,
+                    semaphore= semaphore,
                 )
-            )
-            
-            # Small delay to avoid overwhelming the queue
-            await asyncio.sleep(0.01)
-        
-        # Wait for all pending URL tasks to complete
-        await asyncio.sleep(0.5)  # Give tasks time to complete
-        
-        # Second loop: process any remaining URLs that were added during processing
-        # This is a simple approach - for true concurrency we'd use a more sophisticated
-        # task management system, but this works for the current architecture
-        while queued_urls.get_size():
-            try:
-                url_str = queued_urls.get()
-            except IndexError:
+            ))
+        # Wait for the tasks to finish
+        logger.debug(f"Waiting for tasks to finish processing")
+        await asyncio.gather(*tasks)
+
+
+    logger.info(f"First crawl loop completed. Total URLs saved: {len(state.fetched_urls)}")
+    logger.info(f"Second crawling loop (media) started, media left: {media_queued_urls.get_size()}")
+
+    # Second fetching loop (images/videos)
+    while media_queued_urls.get_size() > 0:
+        tasks = []
+        for i in range(cfg.max_concurrency):
+            if media_queued_urls.get_size():
+                url_str = media_queued_urls.get()
+            else:
                 break
-            
-            await _process_url(
-                url_str,
-                async_http_client,
-                cfg,
-                st,
-                output_dir,
-                queued_urls,
-                media_queued_urls,
-                delay,
-                max_tries,
-                semaphore,
-            )
+            # Process URL concurrently (semaphore controls concurrency)
+            logger.debug(f"Creating task to process media url: {url_str}")
+            tasks.append(asyncio.create_task(
+                _process_media_url(
+                    media_url_str= url_str,
+                    async_http_client= async_http_client,
+                    cfg= cfg,
+                    state= state,
+                    queued_urls= queued_urls,
+                    media_queued_urls= media_queued_urls,
+                    semaphore= semaphore
+                )
+            ))
+        # Wait for the tasks to finish
+        logger.debug(f"Waiting for media tasks to finish processing")
+        await asyncio.gather(*tasks)
 
-        logger.info(f"First crawl loop completed. Total URLs saved: {len(st.fetched_urls)}")
-        logger.info(f"Second crawling loop (media) started, media left: {media_queued_urls.get_size()}")
+    logger.info(f"Crawling completed. Total fetched URLs: {len(state.fetched_urls)}")
 
-        # Second fetching loop (images/videos)
-        while media_queued_urls.get_size():
-            try:
-                media_url_str = media_queued_urls.get()
-            except IndexError:
-                logger.error("Index error: Media Queue empty")
-                break
-            
-            await _process_media_url(
-                media_url_str,
-                async_http_client,
-                cfg,
-                st,
-                output_dir,
-                queued_urls,
-                media_queued_urls,
-                delay,
-                max_tries,
-                semaphore,
-            )
-
-        logger.info(f"Crawling completed. Total fetched URLs: {len(st.fetched_urls)}")
-    
-    # AsyncClient is automatically closed here
-    
+    # Return summary
     return {
-        "total_urls": len(st.fetched_urls),
-        "html_downloaded": st.html_downloaded,
-        "media_downloaded": st.media_downloaded,
-        "javascript_downloaded": st.javascript_downloaded,
-        "css_downloaded": st.css_downloaded,
-        "runtime": int(time.time() - state_module.state.start_time)
+        "total_fetched_urls": len(state.fetched_urls),
+        "html_downloaded": state.html_downloaded,
+        "media_downloaded": state.media_downloaded,
+        "javascript_downloaded": state.javascript_downloaded,
+        "css_downloaded": state.css_downloaded,
+        "runtime": time.time() - state.start_time
     }
+

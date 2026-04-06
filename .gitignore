@@ -21,6 +21,7 @@ example-directory/
 output/
 
 # Logs
+scraping-reports/
 *.log
 scraping-report*
 

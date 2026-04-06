@@ -55,8 +55,9 @@ python __main__.py https://example.com
 | `--output` | `-o` | Output directory for downloaded files | Uses config.json |
 | `--verbose` | `-v` | Increase verbosity (-v for INFO, -vv for DEBUG) | 0 (WARNING) |
 | `--delay` | - | Delay between retry attempts in seconds | 3 |
-| `--max-tries` | - | Maximum retry attempts per URL | 30 |
+| `--max-tries` | - | Maximum retry attempts per URL | 30 (or config.json) |
 | `--concurrency` | `-c` | Maximum concurrent requests | 10 (or config.json) |
+| `--from-config` | - | Ignore all CLI args, use only config.json | - |
 
 ### Usage Examples
 
@@ -83,6 +84,11 @@ python -m __main__ https://example.com -o my_docs
 **5. Combine multiple options:**
 ```bash
 python -m __main__ https://example.com -d 3 -v -o ./output --delay 2
+```
+
+**6. Use only config.json settings (ignore all CLI arguments):**
+```bash
+python -m __main__ --from-config
 ```
 
 ### Configuration File
@@ -112,6 +118,10 @@ Then edit `config.json` with your desired settings:
 | `save_directory` | string | Output directory | `./output/` |
 | `report_files_directory` | string | Report output directory | `./` |
 | `start_page_url` | string | Default start URL | Required |
+| `delay` | int | Delay between retry attempts (seconds) | `3` |
+| `max_tries` | int | Maximum retry attempts per URL | `30` |
+| `max_concurrency` | int | Maximum concurrent requests | `10` |
+| `verbose` | boolean | Enable debug logging | `false` |
 
 #### Scope Configuration
 
@@ -143,22 +153,28 @@ You can also use the crawler in your Python code:
 
 ```python
 import asyncio
-from crawler import crawl
+import httpx
+from localweb import crawl, CrawlerConfig, CrawlerState
 
 async def main():
-    result = await crawl(
-        url="https://example.com",
+    cfg = CrawlerConfig(
+        start_url="https://example.com",
         depth=3,
-        save_dir="./output",
+        output_directory="./output",
         delay=3,
-        max_tries=30
+        max_tries=30,
+        max_concurrency=10
     )
-    print(result)
+    state = CrawlerState()
+    async with httpx.AsyncClient() as client:
+        result = await crawl(cfg, state, client)
+    
+    print(resu)
 
 asyncio.run(main())
 ```
 
-The `crawl()` function accepts an additional `max_concurrency` parameter and returns a dictionary with:
+The `crawl()` function returns a dictionary with crawl statistics:
 ```python
 {
     "total_urls": 100,
@@ -166,20 +182,20 @@ The `crawl()` function accepts an additional `max_concurrency` parameter and ret
     "media_downloaded": 30,
     "javascript_downloaded": 10,
     "css_downloaded": 10,
-    "runtime": 120  # seconds
+    "runtime": 120.0  # seconds
 }
 ```
 
 ### Import from Package
 
 ```python
-from localweb import crawl, config, state
+from localweb import crawl, CrawlerConfig, CrawlerState
 
-# Access configuration
-print(config.save_directory)
+# Create config
+cfg = CrawlerConfig(start_url="https://example.com")
 
-# Access crawler state
-print(state.html_downloaded)
+# Create state
+state = CrawlerState()
 ```
 
 ## Project Structure

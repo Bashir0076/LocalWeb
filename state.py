@@ -16,8 +16,7 @@ class CrawlerState:
     """Async-safe runtime state for the crawler."""
     
     # Request tracking
-    total_requests: int = 0
-    successful_requests: list[httpx.URL] = field(default_factory=list)
+    total_successful_requests: int = 0
     status_error_requests: list[httpx.URL] = field(default_factory=list)
     request_error_requests: list[httpx.URL] = field(default_factory=list)
     other_error_requests: list[httpx.URL] = field(default_factory=list)
@@ -30,7 +29,7 @@ class CrawlerState:
     others_downloaded: int = 0
     
     # URL tracking
-    fetched_urls: dict = field(default_factory=dict)  # {url: url-after-redirects}
+    fetched_urls: set = field(default_factory=set)
     
     # Cookies
     cookies: dict = field(default_factory=dict)
@@ -44,9 +43,10 @@ class CrawlerState:
     async def increment_request(self, url: httpx.URL, response_url: httpx.URL | None = None):
         """Async-safe increment of total requests."""
         async with self._lock:
-            self.total_requests += 1
-            self.successful_requests.append(url)
-            self.fetched_urls[str(url)] = str(response_url or url)
+            self.total_successful_requests += 1
+            self.fetched_urls.add(str(url))
+            if response_url:
+                self.fetched_urls.add(str(response_url))
     
     async def increment_status_error(self, url: httpx.URL):
         """Async-safe increment of status errors."""
@@ -91,8 +91,7 @@ class CrawlerState:
     async def reset(self):
         """Reset all state for a new crawl session."""
         async with self._lock:
-            self.total_requests = 0
-            self.successful_requests.clear()
+            self.total_successful_requests = 0
             self.status_error_requests.clear()
             self.request_error_requests.clear()
             self.other_error_requests.clear()

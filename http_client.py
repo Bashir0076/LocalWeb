@@ -31,11 +31,11 @@ async def get_page(
     Args:
         url: The URL to fetch (string or httpx.URL).
         httpx_async_client: The httpx async client for making requests.
+        state: CrawlerState to track request statistics and cookies.
         follow_redirects: Whether to follow HTTP redirects. Default True.
         cookies: Optional dict of cookies to send with the request. Modified in-place.
         wait_time: Seconds to wait between retry attempts. Default 3.
         max_tries: Maximum number of attempts. Default 30.
-        state: Optional CrawlerState to track request statistics and cookies.
 
     Returns:
         httpx.Response on success, or None if all retries exhausted.
@@ -43,7 +43,6 @@ async def get_page(
         
     logger.debug(f"Making request to {url}")
     url = httpx.URL(url)
-    last_error = None
 
     #setting the max tries to 'inf' so that it is always greater that `tries`
     if max_tries <= 0:
@@ -51,7 +50,6 @@ async def get_page(
 
     tries = 0
     while True:
-        tries += 1
         try:
             logger.debug(f"Attempting to fetch URL: {url} (attempt {tries + 1}/{max_tries})")
             response = await httpx_async_client.get(
@@ -74,9 +72,9 @@ async def get_page(
             return response
 
         except httpx.HTTPStatusError as err:
-            last_error = err
             logger.error(f"HTTP error fetching {url}: {err.response.status_code} - {err.response.reason_phrase}")
             await state.increment_status_error(url)
+            tries += 1
             
             if tries >= max_tries - 1:
                 logger.error(f"Max retries ({max_tries}) reached for {url}, raising error")
@@ -87,9 +85,9 @@ async def get_page(
             continue
 
         except httpx.RequestError as err:
-            last_error = err
             logger.error(f"Request error fetching {url}: {err}")
             await state.increment_request_error(url)
+            tries += 1
             
             if tries >= max_tries - 1:
                 logger.error(f"Max retries ({max_tries}) reached for {url}, returning None")
@@ -99,10 +97,13 @@ async def get_page(
             await asyncio.sleep(wait_time)
             continue
 
-        except Exception as err:
-            last_error = err
-            logger.error(f"Unexpected error fetching {url}: {err}")
+        except Exception as e:
+            logger.error(f"Unexpected error fetching {url}: {e}")
+            logger.error(f"{e} Traceback: " + ''.join(
+                traceback.format_exception(type(e), e, e.__traceback__))
+            )
             await state.increment_other_error(url)
+            tries += 1
             
             if tries >= max_tries - 1:
                 logger.error(f"Max retries ({max_tries}) reached for {url}, returning None")

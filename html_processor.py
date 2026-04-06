@@ -5,12 +5,18 @@ Handles link extraction, scope checking, and local link conversion.
 import logging
 from urllib.parse import urljoin
 from typing import TYPE_CHECKING
+import traceback
 
 import httpx
 from bs4 import BeautifulSoup
 
 import config_loader
+from config_loader import CrawlerConfig
+from state import CrawlerState
 import utils
+from http_client import get_page
+from storage import save_response
+
 
 if TYPE_CHECKING:
     from utils import Queue
@@ -18,8 +24,12 @@ if TYPE_CHECKING:
 
 logger = logging.getLogger(__name__)
 
-
-def is_in_scope(url: httpx.URL | str, scopes: list[utils.Scope] | None) -> bool:
+#TODO: document the args of this
+def is_in_scope(url: httpx.URL | str, 
+                scopes: list[utils.Scope] | None, 
+                fallback_depth_limit: int | None = None,
+                override_scope_depth: bool = False
+                ) -> bool:
     """Check if a URL is within the allowed crawling scope.
 
     Validates URL against a list of Scope objects, checking:
@@ -30,30 +40,31 @@ def is_in_scope(url: httpx.URL | str, scopes: list[utils.Scope] | None) -> bool:
     Args:
         url: The URL to validate (string or httpx.URL).
         scopes: List of Scope objects defining allowed boundaries, or None for any URL.
+        fallback_depth_limit: Optional global depth limit to apply if scopes is None or override_scope_depth is True.
+        override_scope_depth: If True, uses fallback_depth_limit instead of scope.max_depth.
 
     Returns:
-        True if URL is in scope, False otherwise. Returns True if scopes is None.
+        True if URL is in scope, False otherwise. Returns True if scopes is None and depth allows.
     """
-    logger.debug(f"Checking url {url} in scopes {scopes}")
 
-    def get_url_depth(url: httpx.URL, scope_path: str) -> int:
-        """Calculate the depth of a URL relative to the scope path."""
-        url_path = url.path.rstrip('/')
-        
-        if not url_path.startswith(scope_path):
-            return 0
-            
-        relative = url_path[len(scope_path):]
-        if not relative:
-            return 1
-        return relative.count('/') + 1
+    logger.debug(f"Checking url {url} in scopes {scopes}")
 
     url = httpx.URL(url)
 
     # If scope is None, any URL is valid
     if scopes is None:
+        # Check the fallback_depth_limit before proceeding
+        if (fallback_depth_limit is not None
+                and fallback_depth_limit >= 1
+                and get_url_depth(url) > fallback_depth_limit
+                ):
+            logger.debug(f"fallback depth is provided {fallback_depth_limit}," 
+                f" and depth is {get_url_depth(url)}, returning False...")
+            return False
+
         return True
 
+    # Iterating over scopes to find a parent scope
     for scope in scopes:
         # Parse the scope URL to get host and path
         scope_parsed = httpx.URL(scope.url)
@@ -75,19 +86,44 @@ def is_in_scope(url: httpx.URL | str, scopes: list[utils.Scope] | None) -> bool:
             
         # Check depth limit
         if scope.max_depth >= 1:
-            depth = get_url_depth(url, scope_path)
+            depth = get_relative_url_depth(url, scope.url)
+            # Check override
+            if override_scope_depth and fallback_depth_limit:
+                if depth > fallback_depth_limit:
+                    continue
+            # If not override_scope_depth then use scope.max_depth
             if depth > scope.max_depth:
                 continue
-                
+        
+        # If all tests are passed successfully return True
         return True
-
+    # If no parent scope was found then return False
     return False
+
+
+
+def get_url_depth(url: httpx.URL) -> int:
+    """Calculate the absolute depth of a URL path"""
+    url_path = url.path.rstrip('/')        
+    return url_path.count('/') + 1
+
+def get_relative_url_depth(url: httpx.URL, scope_url: httpx.URL) -> int:
+    """Calculate the depth of a URL relative to the scope path.\n
+    ### NOTE: this funuction does NOT check if the url is in scope.\n
+    ### NOTE: if url is not is scope, this function may result in unexpected 
+              output such as number below 1
+    """
+    url_depth = get_url_depth(url)
+    scope_url_depth = get_url_depth(scope_url)
+    return (scope_url_depth - url_depth) + 1
+
 
 
 def make_links_local(
         response: httpx.Response,
-        queued_urls: 'Queue',
-        media_queued_urls: 'Queue'
+        cfg: CrawlerConfig,
+        queued_urls: utils.Queue,
+        media_queued_urls: utils.Queue
     ) -> str:
     """Convert links in HTML to local relative paths for offline viewing.
 
@@ -103,13 +139,13 @@ def make_links_local(
 
     Args:
         response: The HTTP response with HTML content.
-        queued_urls: Queue for discovered HTML URLs (can be None).
-        media_queued_urls: Queue for discovered media URLs (can be None).
+        cfg: CrawlerConfig instance with settings.
+        queued_urls: Queue for discovered HTML URLs.
+        media_queued_urls: Queue for discovered media URLs.
 
     Returns:
         Modified HTML string with converted links.
     """
-    cfg = config_loader.config
     soup = BeautifulSoup(response.content.decode(), "lxml")
 
     # Process <a> tags
@@ -134,7 +170,10 @@ def make_links_local(
             parsed = httpx.URL(resolved)
 
         # Check if it's in scope
-        if is_in_scope(parsed, cfg.allowed_html_scopes):
+        if is_in_scope(
+                parsed, cfg.allowed_html_scopes, 
+                cfg.depth, cfg.depth is not None
+            ):
             queued_urls.put(str(parsed))
             rel_path = utils.get_relative_path(
                 f"{response.url.host}/{response.url.path}",
@@ -225,7 +264,10 @@ def make_links_local(
             resolved = urljoin(str(response.url), src)
             parsed = httpx.URL(resolved)
 
-        if is_in_scope(parsed, cfg.allowed_iframe_scopes):
+        if is_in_scope(
+                parsed, cfg.allowed_iframe_scopes, 
+                cfg.depth, cfg.depth is not None
+            ):
             queued_urls.put(str(parsed))
             rel_path = utils.get_relative_path(
                 f"{response.url.host}/{response.url.path}",
@@ -263,10 +305,11 @@ def make_links_local(
 async def fetch_js_css_resources(
         response: httpx.Response,
         async_http_client: httpx.AsyncClient,
+        cfg: CrawlerConfig,
         cookies: dict,
-        state,
-        queued_urls,
-        media_queued_urls,
+        state: CrawlerState,
+        queued_urls: utils.Queue,
+        media_queued_urls: utils.Queue,
     ) -> list:
     """Fetch and save JavaScript and CSS resources linked from an HTML page.
 
@@ -283,10 +326,7 @@ async def fetch_js_css_resources(
     Returns:
         List of successfully fetched resource URLs.
     """
-    from http_client import get_page
-    from storage import save_response
     
-    cfg = config_loader.config
     fetched_resources = []
 
     try:
@@ -332,10 +372,10 @@ async def fetch_js_css_resources(
 
                 # Fetch the resource
                 resource_response = await get_page(
-                    parsed_url, 
-                    async_http_client, 
-                    state=state,
-                    cookies=cookies,
+                    url= parsed_url, 
+                    httpx_async_client= async_http_client, 
+                    state= state,
+                    cookies= cookies,
                 )
                 
                 if resource_response is None:
@@ -345,20 +385,26 @@ async def fetch_js_css_resources(
                 fetched_resources.append(parsed_url)
                 # Save the resource
                 await save_response(
-                    resource_response, 
-                    async_http_client, 
-                    cfg.save_directory, 
-                    state,
-                    queued_urls,
-                    media_queued_urls,
+                    response= resource_response, 
+                    async_http_client= async_http_client, 
+                    cfg= cfg,
+                    state= state,
+                    queued_urls= queued_urls,
+                    media_queued_urls= media_queued_urls,
                     )
                 logger.info(f"Fetched resource: {parsed_url}")
 
             except Exception as e:
                 logger.error(f"Failed to fetch resource {url}: {e}")
+                logger.error(f"{e} Traceback: " + ''.join(
+                    traceback.format_exception(type(e), e, e.__traceback__))
+                )
                 continue
 
     except Exception as e:
         logger.error(f"Error parsing JS/CSS from {response.url}: {e}")
+        logger.error(f"{e} Traceback: " + ''.join(
+            traceback.format_exception(type(e), e, e.__traceback__))
+        )
 
     return fetched_resources

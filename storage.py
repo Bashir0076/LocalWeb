@@ -8,11 +8,13 @@ import logging
 import os
 import time
 import json
+import pprint
 from typing import TYPE_CHECKING
 
 import httpx
 
-import config_loader
+from config_loader import CrawlerConfig
+from state import CrawlerState
 import html_processor
 import utils
 
@@ -32,7 +34,7 @@ def _is_media(response: httpx.Response):
     content_type = response.headers.get("content-type").strip().lower()
 
     if ("image" in content_type or "video" in content_type 
-            or path.endswith(media_extensions)
+            or response.url.path.endswith(media_extensions)
             ):
         return True
 
@@ -40,21 +42,24 @@ def _is_media(response: httpx.Response):
 
 
 def _is_html(response: httpx.Response):
-    if "text/html" in content_type or path.endswith((".html", ".htm")):
+    content_type = response.headers["content-type"].lower().strip()
+    if "text/html" in content_type or response.url.path.endswith((".html", ".htm")):
         return True
 
     return False
 
 
 def _is_css(response: httpx.Response):
-    if "css" in content_type or path.endswith(".css"):
+    content_type = response.headers["content-type"].lower().strip()
+    if "css" in content_type or response.url.path.endswith(".css"):
         return True
 
     return False
 
 
 def _is_javascript(response: httpx.Response):
-    if "javascript" in content_type or path.endswith(".js"):
+    content_type = response.headers["content-type"].lower().strip()
+    if "javascript" in content_type or response.url.path.endswith(".js"):
         return True
 
     return False
@@ -65,26 +70,27 @@ def _write_binary_file(path: str, content: bytes) -> None:
     with open(path, "wb") as f:
         f.write(content)
     
-
 async def save_response(
         response: httpx.Response,
         async_http_client: httpx.AsyncClient,
-        save_directory: str,
-        state_obj: 'state.CrawlerState',
+        cfg: CrawlerConfig,
+        state: CrawlerState,
         queued_urls: utils.Queue,
         media_queued_urls: utils.Queue
     ) -> None:
     """Save an HTTP response to the local filesystem, organizing files by domain and path.
 
     This function saves the response content to a directory structure that mirrors
-    the URL structure (e.g., example.com/path/to/page).
+    the URL structure (e.g., example.com/path/to/page). For HTML pages, it processes
+    the content to convert links to local relative paths and extracts new URLs to
+    add to the crawl queues. It also fetches and saves associated JS and CSS resources.
 
     Args:
         response: The httpx.Response object containing the page content to save.
         async_http_client: The async HTTP client to use.
-        save_directory: The base directory to save files to.
-        state_obj: CrawlerState instance for tracking downloads.
-        queued_urls: Queue for discovered URLs.
+        cfg: CrawlerConfig instance with settings.
+        state: CrawlerState instance for tracking downloads.
+        queued_urls: Queue for discovered HTML URLs.
         media_queued_urls: Queue for discovered media URLs.
 
     Returns:
@@ -98,32 +104,33 @@ async def save_response(
         path = path + "/index.html"
 
     # Create the directory structure (async-safe)
-    file_path = f"{save_directory.strip(os.sep)}/{host}/{path.strip('/')}".replace("/", os.sep)
+    file_path = (f"{cfg.output_directory.strip(os.sep)}"
+                 f"{os.sep}{host}{os.sep}{path.strip('/')}"
+                )
     logger.debug(f"Creating directory structure for: {file_path}")
     await asyncio.to_thread(os.makedirs, os.path.dirname(file_path), exist_ok=True)
 
     logger.info(f"Saving response from {response.url} to {file_path}")
 
     content = response.content
-
     
     # Convert links to local paths if it's HTML
     if _is_html(response):
-        content = html_processor.make_links_local(response, queued_urls, media_queued_urls)
-        await state_obj.increment_html()
+        content = html_processor.make_links_local(response, cfg, queued_urls, media_queued_urls)
+        await state.increment_html()
         logger.debug(f"Converted links to local paths for {response.url}")
 
     elif _is_javascript(response):
-        await state_obj.increment_javascript()
+        await state.increment_javascript()
 
     elif _is_css(response):
-        await state_obj.increment_css()
+        await state.increment_css()
 
     elif _is_media(response):
-        await state_obj.increment_media()
+        await state.increment_media()
 
     else:
-        await state_obj.increment_others()
+        await state.increment_others()
 
     await asyncio.to_thread(_write_binary_file, file_path, response.content)
 
@@ -132,16 +139,20 @@ async def save_response(
     # Fetch JS and CSS resources if it's HTML
     if _is_html(response):
         await html_processor.fetch_js_css_resources(
-            response,
-            async_http_client,
-            dict(state_obj.cookies),
-            state_obj,
-            queued_urls,
-            media_queued_urls
+            response= response,
+            async_http_client= async_http_client,
+            cfg= cfg,
+            state= state,
+            cookies= dict(state.cookies),
+            queued_urls= queued_urls,
+            media_queued_urls= media_queued_urls
         )
 
 
-def generate_report(title_suffix: str = ""):
+def generate_report(
+        cfg: CrawlerConfig, state: CrawlerState, 
+        title_suffix: str = "", exception: Exception | None = None
+    ):
     """Generate a scraping report with statistics.
 
     Args:
@@ -149,51 +160,48 @@ def generate_report(title_suffix: str = ""):
     """
     logger.debug("Generating report")
 
-    import state as state_module
-    st = state_module.state
+    utc_iso_time = datetime.datetime.now(datetime.UTC).isoformat()
 
-    cfg = config_loader.config
-
-    with open(cfg.config_path) as cfg_file:
-        cfg_json = cfg_file.read()
-
-    review_message = (
+    report_message = (
         "____________________________________________________\n"
-        f"# Scraping Report {datetime.datetime.now(datetime.UTC).isoformat()}\n"
+        f"# Scraping Report {utc_iso_time}\n"
         f"{title_suffix}\n"
         "____________________________________________________\n"
         "## Requests report:\n"
-        f"- total fetched urls: {len(st.fetched_urls)}\n"
-        f"- total requests: {st.total_requests}\n"
-        f"- successful requests: {len(st.successful_requests)}\n"
-        f"- failed requests: {len(st.failed_requests)}\n"
-        f"- status-error: {len(st.status_error_requests)}\n"
-        f"- request-error: {len(st.request_error_requests)}\n"
-        f"- other-request-errors: {len(st.other_error_requests)}\n"
-        f"- cookies: {st.cookies}\n"
+        f"- total successful requests: {state.total_successful_requests}\n"
+        f"- failed requests: {len(state.failed_requests)}\n"
+        f"- status-error: {len(state.status_error_requests)}\n"
+        f"- request-error: {len(state.request_error_requests)}\n"
+        f"- other-request-errors: {len(state.other_error_requests)}\n"
+        f"- cookies: {state.cookies}\n"
         "____________________________________________________\n"
         "## Storage Report:\n"
-        f"- total saved file: {st.total_downloads}\n"
-        f"- media saved: {st.media_downloaded}\n"
-        f"- html saved: {st.html_downloaded}\n"
-        f"- css saved: {st.css_downloaded}\n"
-        f"- javascript saved: {st.javascript_downloaded}\n"
+        f"- total saved file: {state.total_downloads}\n"
+        f"- media saved: {state.media_downloaded}\n"
+        f"- html saved: {state.html_downloaded}\n"
+        f"- css saved: {state.css_downloaded}\n"
+        f"- javascript saved: {state.javascript_downloaded}\n"
         "____________________________________________________\n"
-        f"### save directory: {cfg.save_directory}\n"
-        f"### total runtime: {int(time.time() - st.start_time)}\n"
+        f"### output directory: {cfg.output_directory}\n"
+        f"### total runtime: {int(time.time() - state.start_time)} seconds\n"
         "____________________________________________________\n"
-        f"## config.json:\n"
-        f"{cfg_json}\n"
+        f"## configurations in dictionary format:\n"
+        f"```python\n{pprint.pformat(cfg.__dict__)}\n```\n"
+        "____________________________________________________\n"
+        f"### Error Traceback:\n"
+        f"{exception} Traceback: " + "".join(traceback.format_exception(type(exception), exception, exception.__traceback__)) + "\n" if exception is not None else "None\n"
+        "____________________________________________________\n"        
     )
 
     # Create ISO-safe filename
-    timestamp = datetime.datetime.now(datetime.UTC).isoformat().replace(':', '-')
+    timestamp = utc_iso_time.replace(':', '-')
     title_suffix_clean = title_suffix.replace(' ', '_').replace(':', '-')
-    report_filename = f"scraping-report_{timestamp}{title_suffix_clean}.md"
+    report_filename = f"scraping-report_{timestamp} {title_suffix_clean}.md"
 
     report_file_path = os.path.join(cfg.report_files_directory, report_filename)
 
+    os.makedirs(cfg.report_files_directory, exist_ok=True)
     with open(report_file_path, "w") as f:
-        f.write(review_message)
+        f.write(report_message)
 
     logger.info(f"Report generated at {report_file_path}")

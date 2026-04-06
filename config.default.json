@@ -1,0 +1,21 @@
+{
+ "allow_data_protocol": false,
+ "allow_iframe": true,
+ "allow_images": true,
+ "allow_javascript": true,
+ "allow_other_link_elements": false,
+ "allow_videos": true,
+ "allowed_html_scopes": null,
+ "allowed_iframe_scopes": null,
+ "blocked_html_scopes": [],
+ "delay": 3,
+ "depth": null,
+ "html_scopes": null,
+ "max_concurrency": 10,
+ "max_tries": 30,
+ "output_directory": "./output/",
+ "remove_javascript": false,
+ "report_files_directory": "./scraping-reports/",
+ "start_url": "http://example.com",
+ "start_url_as_scope": true
+}

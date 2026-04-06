@@ -8,16 +8,16 @@ from dataclasses import dataclass
 
 @dataclass
 class Scope:
-    """Defines a URL scope for crawling with depth limits."""
-    
+    """Defines a URL scope for crawling with depth limits.
+    Args:
+        url: the scope url that we should only scrape urls under it (NOTE: the
+            url must include the protocol like "https://" or "http://")
+        max_depth: the max depth of the url path to limit crawling too far;
+            if `max_depth <= 0` then there is no depth limit.
+    """
+
     url: str
     max_depth: int = 0  # 0 means infinite
-    
-    @property
-    def normalized_url(self) -> str:
-        """Return URL without trailing slash for consistent comparison."""
-        return self.url.rstrip('/')
-
 
 class Queue:
     """FIFO queue with optional duplicate prevention.

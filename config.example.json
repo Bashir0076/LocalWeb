@@ -1,21 +1,29 @@
 {
-    "remove_javascript": false,
-    "allow_javascript": true,
-    "allow_videos": true,
-    "allow_images": true,
-    "allow_data_protocol": false,
-    "allow_iframe": true,
-    "allow_other_link_elements": false,
+    "start_url": "https://scrapfly.io/academy",
+    "allow_javascript": false,
+    "allow_other_link_elements": true,
+    "output_directory": "./scrapfly-academy/",
+    "remove_javascript": true,
+    "report_files_directory": "./scraping-reports/",
+    
     "allowed_html_scopes": [
-        {
-            "url": "https://example.com",
-            "max_depth": 3
-        }
+       {
+           "url": "https://scrapfly.io/academy",
+           "max_depth": 0
+       },
+       {
+           "url": "https://scrapfly.io/blog",
+           "max_depth": 0
+       },
+       {
+           "url": "https://scrapfly.io/scrapeground",
+           "max_depth": 0
+       }
     ],
-    "blocked_scopes": [],
-    "allowed_iframe_scopes": null,
-    "save_directory": "./output/",
-    "report_files_directory": "./",
-    "start_page_url": "https://example.com/",
-    "max_concurrency": 10
+    "blocked_html_scopes": [
+       {
+           "url": "https://google.com",
+           "max_depth": 0
+       }
+    ]
 }
