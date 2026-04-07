@@ -7,7 +7,7 @@ import logging
 
 import httpx
 
-import state
+from . import state
 
 
 logger = logging.getLogger(__name__)

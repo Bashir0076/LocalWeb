@@ -9,12 +9,12 @@ from typing import Optional
 
 import httpx
 
-from config_loader import CrawlerConfig
-import http_client
-import html_processor
-from state import CrawlerState
-import storage
-import utils
+from .config_loader import CrawlerConfig
+from . import http_client
+from . import html_processor
+from .state import CrawlerState
+from . import storage
+from . import utils
 
 
 logger = logging.getLogger(__name__)

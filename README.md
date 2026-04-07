@@ -26,24 +26,37 @@ python -m venv venv
 source venv/bin/activate  # On Windows: venv\Scripts\activate
 ```
 
-3. **Install dependencies:**
+3. **Install the package and dependencies:**
 ```bash
 pip install -r requirements.txt
+pip install .
+```
+
+4. **(Optional) Install in editable mode while developing:**
+```bash
+pip install -e .
 ```
 
 ## How to Use
 
 ### Quick Start
 
-The simplest way to start crawling is to provide a URL directly:
+The simplest way to start crawling is to provide a URL directly from the repository:
 
 ```bash
 python main.py https://example.com
 ```
 
-Or run directly:
+After installing the package, use the installed command:
+
 ```bash
-python main.py https://example.com
+localweb https://example.com
+```
+
+You can also run the package as a module:
+
+```bash
+python -m localweb https://example.com
 ```
 
 ### CLI Options
@@ -53,11 +66,13 @@ python main.py https://example.com
 | `url` | - | Starting URL to crawl (overrides config.json) | Uses config.json |
 | `--depth` | `-d` | Maximum crawl depth (0 = unlimited) | Uses config.json |
 | `--output` | `-o` | Output directory for downloaded files | Uses config.json |
-| `--verbose` | `-v` | Increase verbosity (-v for INFO, -vv for DEBUG) | 0 (WARNING) |
+| `--verbose` | `-v` | Verbose (debug) logging mode | Uses config.json |
+| `--remove-javascript` | - | Removes JavaScript links permanently from HTML | Uses config.json |
 | `--delay` | - | Delay between retry attempts in seconds | 3 |
-| `--max-tries` | - | Maximum retry attempts per URL | 30 (or config.json) |
-| `--concurrency` | `-c` | Maximum concurrent requests | 10 (or config.json) |
-| `--from-config` | - | Ignore all CLI args, use only config.json | - |
+| `--max-tries` | - | Maximum retry attempts per URL (0 = unlimited) | 30 |
+| `--concurrency` | `-c` | Maximum concurrent requests | 10 |
+| `--scope` | `-s` | Add a scope: SCOPE-URL MAX-DEPTH (can be used multiple times) | Uses config.json |
+| `--from-config` | - | Ignore all CLI args and use only the specified config.json file | - |
 
 ### Usage Examples
 
@@ -83,12 +98,17 @@ python main.py https://example.com -o my_docs
 
 **5. Combine multiple options:**
 ```bash
-python -m main https://example.com -d 3 -v -o ./output --delay 2
+localweb https://example.com -d 3 -v -o ./output --delay 2
 ```
 
 **6. Use only config.json settings (ignore all CLI arguments):**
 ```bash
-python main.py --from-config
+localweb --from-config config.json
+```
+
+**7. Crawl with custom scope and remove JavaScript:**
+```bash
+localweb https://example.com -s https://example.com/docs 2 --remove-javascript
 ```
 
 ### Configuration File

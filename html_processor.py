@@ -10,12 +10,12 @@ import traceback
 import httpx
 from bs4 import BeautifulSoup
 
-import config_loader
-from config_loader import CrawlerConfig
-from state import CrawlerState
-import utils
-from http_client import get_page
-from storage import save_response
+from . import config_loader
+from .config_loader import CrawlerConfig
+from .state import CrawlerState
+from . import utils
+from .http_client import get_page
+from .storage import save_response
 
 
 if TYPE_CHECKING:

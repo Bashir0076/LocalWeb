@@ -10,7 +10,7 @@ from typing import Any
 
 import httpx
 
-from utils import Scope
+from .utils import Scope
 
 
 logger = logging.getLogger(__name__)

@@ -7,14 +7,20 @@ import logging
 import os
 import sys
 import traceback
+from os import path
 
 import httpx
 
-import crawler
-from config_loader import CrawlerConfig
-from state import CrawlerState
-import storage
-from os import path
+try:
+    from . import crawler
+    from .config_loader import CrawlerConfig
+    from .state import CrawlerState
+    from . import storage
+except ImportError:
+    import crawler
+    from config_loader import CrawlerConfig
+    from state import CrawlerState
+    import storage
 
 #TODO: mention in the README that when you encounter wierd Errors or pages are not getting saved, consider retruning config.json to its defaults from config.default.json.
 #TODO: mention in the README that you should never touch config.default.json unless you know what you're doing.
@@ -197,5 +203,9 @@ async def main() -> int:
             return 1
 
 
+def run() -> int:
+    return asyncio.run(main())
+
+
 if __name__ == "__main__":
-    sys.exit(asyncio.run(main()))
+    sys.exit(run())

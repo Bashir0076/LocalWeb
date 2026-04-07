@@ -14,10 +14,10 @@ from typing import TYPE_CHECKING
 
 import httpx
 
-from config_loader import CrawlerConfig
-from state import CrawlerState
-import html_processor
-import utils
+from .config_loader import CrawlerConfig
+from .state import CrawlerState
+from . import html_processor
+from . import utils
 
 if TYPE_CHECKING:
     import state

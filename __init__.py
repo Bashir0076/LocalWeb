@@ -8,7 +8,10 @@ import sys
 
 # Import main components for easy access
 from .crawler import crawl
-from .config_loader import config, Config
+from .config_loader import CrawlerConfig
 from .state import state, CrawlerState
+
+config = CrawlerConfig()
+Config = CrawlerConfig
 
 __all__ = ['crawl', 'config', 'Config', 'state', 'CrawlerState']
