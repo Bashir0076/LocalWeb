@@ -34,7 +34,7 @@ class Queue:
     Uses a set for O(1) membership checks instead of list.__contains__ which is O(n).
     """
     
-    def __init__(self, *items, no_repeat: bool = False, load_from_file: str | None = None, save_to_file: str | None = None) -> None:
+    def __init__(self, *items, no_repeat: bool = False, load_from_file: str | None = None, save_file: str | None = None) -> None:
         self.no_repeat = no_repeat
         self._seen: set = set()
         self._deque: deque = deque()
