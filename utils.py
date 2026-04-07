@@ -16,8 +16,11 @@ class Scope:
             if `max_depth <= 0` then there is no depth limit.
     """
 
-    url: str
+    url: httpx.URL
     max_depth: int = 0  # 0 means infinite
+    def __post_init__(self):
+        if isinstance(self.url, str):
+            self.url = httpx.URL(self.url)
 
 class Queue:
     """FIFO queue with optional duplicate prevention.
@@ -30,18 +33,40 @@ class Queue:
     Uses a set for O(1) membership checks instead of list.__contains__ which is O(n).
     """
     
-    def __init__(self, *items, no_repeat: bool = False) -> None:
+    def __init__(self, *items, no_repeat: bool = False, load_from_file: str | None = None, save_to_file: str | None = None) -> None:
         self.no_repeat = no_repeat
         self._seen: set = set()
         self._deque: deque = deque()
+        self._save_file = None
 
+        if save_to_file:
+            os.makedirs(os.path.dirname(save_to_file), exist_ok=True)
+            self._save_file = open(save_to_file, 'a')
+        
         for item in items:
-            if self.no_repeat:
-                if item not in self._seen:
-                    self._seen.add(item)
-                    self._deque.append(item)
-            else:
-                self._deque.append(item)
+            self.put(item)
+
+        # If load_from_file is provided, load items from the file. The file can contain lines of the form:
+        # - "item_value" to add an item to the queue
+        # - "DEQUEUED: item_value" to indicate that an item was dequeued (and should be removed from the queue and seen set)
+        if load_from_file:
+            os.makedirs(os.path.dirname(load_from_file), exist_ok=True)
+            try:
+                with open(load_from_file, 'r') as f:
+                    data = f.readlines()
+            except FileNotFoundError:
+                logger.warning(f"Load file not found: {load_from_file}. Starting with an empty queue.")
+                pass
+            for item in data:
+                if item.startswith("DEQUEUED: "):
+                    dequeued_item = item[len("DEQUEUED: "):].strip()
+                    if self._deque.count(dequeued_item) > 0:
+                        self._deque.remove(dequeued_item)
+                        self._seen.discard(dequeued_item)
+                        self._save_file.write(f"DEQUEUED: {dequeued_item}\n")
+                    continue
+                self.put(item)
+
 
     def __len__(self) -> int:
         return len(self._deque)
@@ -53,8 +78,11 @@ class Queue:
         """
         if self.no_repeat and item in self._seen:
             return
+        
         self._deque.append(item)
         self._seen.add(item)
+        if self._save_file:
+            self._save_file.write(f"{item}\n")
 
     def get(self):
         """Remove and return the first item in the queue.
@@ -68,7 +96,20 @@ class Queue:
         """
         if not self._deque:
             raise IndexError("Queue is empty")
-        return self._deque.popleft()
+        item = self._deque.popleft()
+        if self._save_file:
+            self._save_file.write(f"DEQUEUED: {item}\n")
+        return item
+    
+    def close_save_file(self):        
+        """Close the save file if it was opened."""
+        if self._save_file:
+            self._save_file.flush() 
+            self._save_file.close()
+
+    def __del__(self):
+        """Ensure the save file is closed when the Queue is garbage collected."""
+        self.close_save_file()
 
     def get_size(self) -> int:
         """Return the number of items currently in the queue."""

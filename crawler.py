@@ -165,8 +165,16 @@ async def crawl(
     state.start_time = time.time()
 
     # Create queues
-    queued_urls = utils.Queue(no_repeat=True)
-    media_queued_urls = utils.Queue(no_repeat=True)
+    queued_urls = utils.Queue(
+        no_repeat=True, 
+        load_from_file= cfg.output_directory + "/queued_urls.txt",
+        save_file=cfg.output_directory + "/queued_urls.txt"
+        )
+    media_queued_urls = utils.Queue(
+        no_repeat=True,
+        load_from_file= cfg.output_directory + "/media_queued_urls.txt",
+        save_file=cfg.output_directory + "/media_queued_urls.txt"
+        )
 
     logger.debug(f"Creating semaphore with concurrency limit: {cfg.max_concurrency}")    
     # Use semaphore to limit concurrency

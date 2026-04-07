@@ -1,23 +1,23 @@
 {
     "start_url": "https://scrapfly.io/academy",
     "allow_javascript": false,
+    "remove_javascript": true,
     "allow_other_link_elements": true,
     "output_directory": "./scrapfly-academy/",
-    "remove_javascript": true,
     "report_files_directory": "./scraping-reports/",
     
     "allowed_html_scopes": [
        {
            "url": "https://scrapfly.io/academy",
-           "max_depth": 0
+           "max_depth": 4
        },
        {
            "url": "https://scrapfly.io/blog",
-           "max_depth": 0
+           "max_depth": 3
        },
        {
            "url": "https://scrapfly.io/scrapeground",
-           "max_depth": 0
+           "max_depth": 3
        }
     ],
     "blocked_html_scopes": [

@@ -9,6 +9,7 @@ import os
 import time
 import json
 import pprint
+import traceback
 from typing import TYPE_CHECKING
 
 import httpx
