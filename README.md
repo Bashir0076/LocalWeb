@@ -38,12 +38,12 @@ pip install -r requirements.txt
 The simplest way to start crawling is to provide a URL directly:
 
 ```bash
-python -m __main__ https://example.com
+python main.py https://example.com
 ```
 
 Or run directly:
 ```bash
-python __main__.py https://example.com
+python main.py https://example.com
 ```
 
 ### CLI Options
@@ -63,32 +63,32 @@ python __main__.py https://example.com
 
 **1. Crawl an entire website:**
 ```bash
-python -m __main__ https://example.com
+python main.py https://example.com
 ```
 
 **2. Crawl with a specific depth:**
 ```bash
-python -m __main__ https://example.com -d 2
+python main.py https://example.com -d 2
 ```
 
 **3. Crawl with verbose output:**
 ```bash
-python -m __main__ https://example.com -v
+python main.py https://example.com -v
 ```
 
 **4. Crawl with custom output directory:**
 ```bash
-python -m __main__ https://example.com -o my_docs
+python main.py https://example.com -o my_docs
 ```
 
 **5. Combine multiple options:**
 ```bash
-python -m __main__ https://example.com -d 3 -v -o ./output --delay 2
+python -m main https://example.com -d 3 -v -o ./output --delay 2
 ```
 
 **6. Use only config.json settings (ignore all CLI arguments):**
 ```bash
-python -m __main__ --from-config
+python main.py --from-config
 ```
 
 ### Configuration File
@@ -203,7 +203,7 @@ state = CrawlerState()
 ```
 LocalWeb/
 ├── __init__.py          # Package initialization and exports
-├── __main__.py          # CLI entry point
+├── main.py          # CLI entry point
 ├── crawler.py           # Main crawler orchestration
 ├── config_loader.py     # Configuration management
 ├── http_client.py       # HTTP client with retry logic

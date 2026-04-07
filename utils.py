@@ -4,6 +4,7 @@ LocalWeb utility classes and functions.
 import os
 from collections import deque
 from dataclasses import dataclass
+import httpx
 
 
 @dataclass
