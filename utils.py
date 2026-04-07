@@ -40,9 +40,9 @@ class Queue:
         self._deque: deque = deque()
         self._save_file = None
 
-        if save_to_file:
-            os.makedirs(os.path.dirname(save_to_file), exist_ok=True)
-            self._save_file = open(save_to_file, 'a')
+        if save_file:
+            os.makedirs(os.path.dirname(save_file), exist_ok=True)
+            self._save_file = open(save_file, 'a')
         
         for item in items:
             self.put(item)
