@@ -1,3 +1,4 @@
+## -DEPRECATED-
 # LocalWeb
 
 A powerful Python web crawler designed to download and save websites for offline viewing. It crawls websites, converts links to local relative paths, and downloads all associated assets (HTML, CSS, JavaScript, images, videos) to create a fully navigable offline site.
